@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ai Collective Finance | Enterprise Finance Hub</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="mesh-bg" aria-hidden="true">
+  <div class="mesh-blob blob-1"></div>
+  <div class="mesh-blob blob-2"></div>
+  <div class="mesh-blob blob-3"></div>
+</div>
+
+<div class="layout-grid">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <span class="material-icons-round icon">account_balance</span>
+      <h2>Ai Finance</h2>
+    </div>
+    <nav class="sidebar-nav">
+      <a href="index.html#dashboard" class="nav-btn">
+        <span class="material-icons-round">space_dashboard</span> Core System
+      </a>
+      <a href="#" class="nav-btn active">
+        <span class="material-icons-round">donut_large</span> Finance Hub
+      </a>
+    </nav>
+    <div style="padding: 20px;">
+      <button id="themeToggle" class="btn btn-primary" style="width: 100%;">
+        <span class="material-icons-round">light_mode</span> Toggle Theme
+      </button>
+    </div>
+  </aside>
+
+  <!-- MAIN CONTENT -->
+  <main class="main-content">
+    <header class="topbar">
+      <div class="page-title">
+        <span class="material-icons-round">donut_large</span>
+        <span>High-Density Finance Dashboard</span>
+      </div>
+      <div style="display: flex; gap: 16px;">
+        <div class="finance-widget" style="padding: 8px 16px; border-radius: 20px; flex-direction: row; align-items: center; gap: 12px; margin: 0;">
+            <span class="material-icons-round" style="color: var(--primary);">currency_exchange</span>
+            <span style="font-weight: 600; font-family: var(--font-mono); font-size: 0.9rem;">USD / EUR : 0.92</span>
+        </div>
+        <div class="finance-widget" style="padding: 8px 16px; border-radius: 20px; flex-direction: row; align-items: center; gap: 12px; margin: 0;">
+            <span class="material-icons-round" style="color: var(--warning);">price_change</span>
+            <span style="font-weight: 600; font-family: var(--font-mono); font-size: 0.9rem;">Invoice Yield: 8.4%</span>
+        </div>
+      </div>
+    </header>
+
+    <div class="dual-verification" style="padding: 40px;">
+      
+      <!-- LEFT PANEL: Document Viewer -->
+      <div class="doc-viewer-panel">
+        <div class="widget-header" style="padding: 16px 20px; margin: 0; background: rgba(0,0,0,0.2);">
+          <div class="widget-title"><span class="material-icons-round">description</span> Source Document</div>
+          <button class="btn btn-sm btn-primary" onclick="document.getElementById('verifyModal').showModal()">Verify Match</button>
+        </div>
+        <div style="flex: 1; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.4); padding: 20px;">
+            <div style="width: 100%; height: 100%; background: white; border-radius: 8px; padding: 40px; color: black; box-shadow: 0 10px 30px rgba(0,0,0,0.5); display: flex; flex-direction: column; gap: 20px; overflow-y: auto;">
+                <div style="display: flex; justify-content: space-between; border-bottom: 2px solid #eee; padding-bottom: 20px;">
+                    <div>
+                        <h2 style="font-family: Arial; margin-bottom: 5px; color: #333;">VENDOR INVOICE</h2>
+                        <p style="color: #666; font-size: 0.9rem;">INV-2026-9042</p>
+                    </div>
+                    <div style="text-align: right;">
+                        <h3 style="color: #333; margin-bottom: 5px;">CloudScale Tech</h3>
+                        <p style="color: #666; font-size: 0.9rem;">vendor@cloudscale.net</p>
+                    </div>
+                </div>
+                <table style="width: 100%; color: #333; text-align: left; border-collapse: collapse;">
+                    <tr style="border-bottom: 1px solid #ddd;">
+                        <th style="padding: 10px 0;">Description</th>
+                        <th style="text-align: right; padding: 10px 0;">Amount</th>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px 0;">Q1 Server Compute (NVidia A100)</td>
+                        <td style="text-align: right; padding: 10px 0; font-family: monospace;">$45,000.00</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px 0;">Bandwidth Overage</td>
+                        <td style="text-align: right; padding: 10px 0; font-family: monospace;">$5,000.00</td>
+                    </tr>
+                </table>
+                <div style="text-align: right; margin-top: auto;">
+                    <p style="color: #666; font-size: 0.9rem; margin-bottom: 5px;">Gross Total</p>
+                    <h2 style="font-family: monospace; color: #111;">$50,000.00</h2>
+                </div>
+            </div>
+        </div>
+      </div>
+
+      <!-- RIGHT PANEL: Data Entry & Verification -->
+      <div class="data-entry-panel">
+        
+        <!-- BURN RATE WIDGET -->
+        <div class="finance-widget">
+          <div class="widget-header">
+            <div class="widget-title"><span class="material-icons-round">local_fire_department</span> Cash Flow "Burn Rate"</div>
+            <span style="font-size: 0.8rem; color: var(--text-secondary);">Current QTR</span>
+          </div>
+          <div class="kpi-flex">
+            <div class="kpi-card">
+              <span class="kpi-label">Budget Consumed</span>
+              <span class="kpi-value tabular-data">78.4%</span>
+              <div class="progress-track"><div class="progress-fill" style="width: 78.4%; background: linear-gradient(90deg, var(--warning), var(--danger));"></div></div>
+            </div>
+            <div class="kpi-card">
+              <span class="kpi-label">Pending > 48h</span>
+              <span class="kpi-value tabular-data negative-val">$14,500</span>
+              <div class="progress-track"><div class="progress-fill" style="width: 30%; background: var(--danger);"></div></div>
+            </div>
+            <div class="kpi-card">
+              <span class="kpi-label">Liq. Ratio</span>
+              <span class="kpi-value tabular-data positive-val">1.8</span>
+              <div class="progress-track"><div class="progress-fill" style="width: 80%; background: var(--success);"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- REVERSE TAX CALCULATOR -->
+        <div class="finance-widget">
+          <div class="widget-header">
+            <div class="widget-title"><span class="material-icons-round">calculate</span> Dynamic GST/Tax Intelligence</div>
+          </div>
+          <div class="input-group" style="margin-bottom: 16px;">
+            <input type="number" id="grossAmount" class="input-field tabular-data" placeholder="Gross Amount" value="50000" oninput="financeApp.calculateTax()">
+            <label class="input-label" for="grossAmount">Gross Invoice Amount (incl. Tax)</label>
+          </div>
+          <div class="tax-grid">
+            <div class="kpi-card" style="background: rgba(255,255,255,0.05); padding: 12px;">
+              <span class="kpi-label">Base Price</span>
+              <span class="kpi-value tabular-data" id="basePrice">$42,372.88</span>
+            </div>
+            <div class="kpi-card" style="background: rgba(255,255,255,0.05); padding: 12px;">
+              <span class="kpi-label">Total Tax (18%)</span>
+              <span class="kpi-value tabular-data" id="totalTax">$7,627.12</span>
+            </div>
+            <div class="kpi-card" style="background: rgba(255,255,255,0.05); padding: 12px;">
+              <span class="kpi-label">CGST (9%)</span>
+              <span class="kpi-value tabular-data" id="cgst">$3,813.56</span>
+            </div>
+            <div class="kpi-card" style="background: rgba(255,255,255,0.05); padding: 12px;">
+              <span class="kpi-label">SGST (9%)</span>
+              <span class="kpi-value tabular-data" id="sgst">$3,813.56</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ADVANCED VENDOR METRICS & MULTI-CURRENCY -->
+        <div class="finance-widget">
+          <div class="widget-header">
+            <div class="widget-title"><span class="material-icons-round">storefront</span> Vendor Intelligence & Currency Precision</div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div class="kpi-card" style="background: rgba(16, 185, 129, 0.05);">
+                <span class="kpi-label">Vendor Rating: CloudScale Tech</span>
+                <span class="vendor-score score-high" style="margin-top: 8px; width: max-content; color: var(--success); font-weight: bold;">A+ / 98% Perf</span>
+                <span style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">Early payment eligible</span>
+            </div>
+            <div class="kpi-card" style="background: rgba(99, 102, 241, 0.05);">
+                <span class="kpi-label">Early Pay Discount (2/10 Net 30)</span>
+                <span class="kpi-value tabular-data positive-val" style="margin-top: 4px;">-$1,000.00</span>
+                <button class="btn btn-sm btn-primary" style="margin-top: 8px;">Apply Discount</button>
+            </div>
+          </div>
+          
+          <div style="margin-top: 16px;">
+            <span class="kpi-label" style="display: block; margin-bottom: 8px;">7-Day FX Trend (USD to EUR)</span>
+            <div class="sparkline-container" id="sparklineContainer">
+              <!-- JS Injected SVG -->
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- SEMANTIC DIALOG FOR CONFIRMATION -->
+<dialog id="verifyModal">
+  <h3 style="margin-bottom: 16px; font-family: var(--font-display);">Confirm Document Match</h3>
+  <p style="color: var(--text-secondary); margin-bottom: 24px;">By confirming, you cryptographically sign that the physical/digital document perfectly matches the data entry. This action cannot be reversed.</p>
+  <div class="dialog-actions">
+    <button class="btn" style="background: transparent; border: 1px solid var(--border); color: var(--text-primary);" onclick="document.getElementById('verifyModal').close()">Cancel</button>
+    <button class="btn btn-success" onclick="financeApp.confirmVerification()"><span class="material-icons-round">verified_user</span> Cryptographic Confirm</button>
+  </div>
+</dialog>
+
+<script src="finance.js"></script>
+</body>
+</html>

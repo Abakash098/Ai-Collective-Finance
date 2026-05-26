@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Ai Collective Finance: Secure Financial Disbursement and AI OCR Platform">
+<title>Ai Collective Finance | Enterprise Platform</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=4">
+</head>
+<body>
+
+<div class="mesh-bg" aria-hidden="true">
+  <div class="mesh-blob blob-1"></div>
+  <div class="mesh-blob blob-2"></div>
+  <div class="mesh-blob blob-3"></div>
+</div>
+
+<!-- Load ClerkJS from CDN -->
+<script
+  async
+  crossorigin="anonymous"
+  data-clerk-publishable-key="pk_test_d29ya2luZy1naWJib24tOTQuY2xlcmsuYWNjb3VudHMuZGV2JA"
+  src="https://working-gibbon-94.clerk.accounts.dev/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
+  type="text/javascript"
+></script>
+
+<!-- ═══════════ LOGIN SCREEN ═══════════ -->
+<div id="loginScreen" style="display: flex;" role="main" aria-label="Login Screen">
+  <div class="login-container glass-panel" style="max-width: 480px; width: 100%;">
+    <div class="brand-logo" aria-hidden="true">
+      <span class="material-icons-round icon">fingerprint</span>
+    </div>
+    <h1 class="login-title">Ai Collective Finance</h1>
+    <p class="login-subtitle">Secure Financial Disbursement Platform</p>
+    
+    <div id="clerk-sign-in" style="margin-top: 24px; display: flex; justify-content: center;"></div>
+  </div>
+</div>
+
+<!-- ═══════════ APP SCREEN ═══════════ -->
+<div id="appScreen" style="display: none;">
+  <div class="layout-grid">
+    
+    <!-- SIDEBAR -->
+    <aside class="sidebar" aria-label="Main Navigation">
+      <div class="sidebar-header">
+        <span class="material-icons-round icon" aria-hidden="true">account_balance</span>
+        <h2>Ai Finance</h2>
+      </div>
+      <nav class="sidebar-nav" role="navigation">
+        <a href="#dashboard" class="nav-btn active" data-target="dashboard" aria-label="Overview">
+          <span class="material-icons-round" aria-hidden="true">space_dashboard</span> Overview
+        </a>
+        <a href="#submit" class="nav-btn" data-target="submit" id="nav-submit" aria-label="Submit Request">
+          <span class="material-icons-round" aria-hidden="true">add_card</span> Submit Request
+        </a>
+        <a href="#review" class="nav-btn" data-target="review" id="nav-review" aria-label="Authorization Queue">
+          <span class="material-icons-round" aria-hidden="true">fact_check</span> Authorization Queue
+        </a>
+        <a href="#finance" class="nav-btn" data-target="finance" id="nav-finance" aria-label="Finance Hub">
+          <span class="material-icons-round" aria-hidden="true">donut_large</span> Finance Hub
+        </a>
+        <a href="#audit" class="nav-btn" data-target="audit" aria-label="Security Audit">
+          <span class="material-icons-round" aria-hidden="true">security</span> Security Audit
+        </a>
+      </nav>
+      <div class="user-profile" aria-label="User Profile">
+        <div class="avatar" id="userAvatar" aria-hidden="true">A</div>
+        <div class="user-info">
+          <div class="user-name" id="userName">User Name</div>
+          <div class="user-role" id="userRole">ROLE · ID</div>
+        </div>
+        <button id="logoutBtn" class="logout-btn" title="Secure Logout" aria-label="Logout">
+          <span class="material-icons-round" aria-hidden="true">logout</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="main-content" role="main">
+      <header class="topbar">
+        <div style="display: flex; align-items: center; gap: 16px;">
+          <button id="mobileMenuBtn" class="btn btn-sm" aria-label="Toggle Menu" style="background: transparent; color: var(--text-primary);">
+            <span class="material-icons-round">menu</span>
+          </button>
+          <div class="page-title" id="pageTitle">
+            <span class="material-icons-round" id="pageIcon" aria-hidden="true">space_dashboard</span>
+            <span id="pageTitleText">Overview</span>
+          </div>
+        </div>
+        
+        <div style="display: flex; align-items: center; gap: 16px;">
+          <!-- Search Bar -->
+          <div class="search-bar" role="search">
+            <span class="material-icons-round search-icon">search</span>
+            <input type="text" placeholder="Search requests..." aria-label="Search requests" id="globalSearch">
+          </div>
+          <!-- Density Toggle -->
+          <button class="btn btn-sm" aria-label="Toggle Density" id="densityToggle" style="background: transparent; border: 1px solid var(--border); color: var(--text-primary);">
+            <span class="material-icons-round">view_compact</span>
+          </button>
+          <!-- Theme Toggle -->
+          <button class="btn btn-sm" aria-label="Toggle Theme" id="themeToggle" style="background: transparent; border: 1px solid var(--border); color: var(--text-primary);">
+            <span class="material-icons-round">light_mode</span>
+          </button>
+          <div class="security-badge" aria-label="Security Status">
+            <div class="pulse" aria-hidden="true"></div> 256-bit AES
+          </div>
+        </div>
+      </header>
+
+      <div class="view-container">
+        
+        <!-- ▸ DASHBOARD VIEW -->
+        <div class="view active" id="view-dashboard" role="region" aria-label="Dashboard">
+          <div class="stats-grid" id="statsContainer"></div>
+          <div class="data-section">
+            <div class="section-header">
+              <h3 class="section-title">Recent Disbursements</h3>
+            </div>
+            <div class="table-wrapper">
+              <table aria-label="Recent Disbursements Table">
+                <thead><tr><th scope="col">Request ID</th><th scope="col">Timestamp</th><th scope="col">Initiator</th><th scope="col">Description</th><th scope="col" style="text-align:right">Value</th><th scope="col" style="text-align:center">State</th></tr></thead>
+                <tbody id="dashTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ▸ SUBMIT VIEW -->
+        <div class="view" id="view-submit" role="region" aria-label="Submit Request">
+          <div class="data-section form-layout">
+            <div class="section-header">
+              <h3 class="section-title">Initialize Disbursement</h3>
+            </div>
+            <form id="submitForm">
+              <div class="form-row">
+                <div class="input-group tooltip-container">
+                  <input type="text" id="reqAmt" class="input-field" placeholder="0.00" required aria-required="true">
+                  <label class="input-label" for="reqAmt">Disbursement Amount</label>
+                  <span class="currency-addon" aria-hidden="true">USD</span>
+                  <div class="tooltip">Enter numeric amount only</div>
+                </div>
+              </div>
+              <div class="input-group tooltip-container">
+                <textarea id="reqPurpose" class="input-field" placeholder="Description" required aria-required="true"></textarea>
+                <label class="input-label" for="reqPurpose">Business Purpose</label>
+                <div class="tooltip">Provide clear justification</div>
+              </div>
+              <button type="submit" class="btn btn-primary" aria-label="Transmit Request">
+                <span class="material-icons-round" aria-hidden="true">send</span> Transmit Request
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <!-- ▸ REVIEW VIEW -->
+        <div class="view" id="view-review" role="region" aria-label="Authorization Queue">
+          <div class="data-section">
+            <div class="section-header">
+              <h3 class="section-title" id="reviewSectionTitle">Pending Authorizations</h3>
+            </div>
+            <div class="table-wrapper">
+              <table aria-label="Pending Authorizations Table">
+                <thead><tr><th scope="col">Request ID</th><th scope="col">Initiator</th><th scope="col">Description</th><th scope="col" style="text-align:right">Value</th><th scope="col" style="text-align:center">State</th><th scope="col" style="text-align:center">Authorization</th></tr></thead>
+                <tbody id="reviewTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ▸ AUDIT VIEW -->
+        <div class="view" id="view-audit" role="region" aria-label="Audit Log">
+          <div class="data-section">
+            <div class="section-header">
+              <h3 class="section-title">Immutable Audit Trail</h3>
+            </div>
+            <div class="timeline" id="auditTimeline"></div>
+          </div>
+        </div>
+
+        <!-- ▸ FINANCE HUB VIEW -->
+        <div class="view" id="view-finance" role="region" aria-label="Finance Hub">
+          <div class="dual-verification">
+            <!-- LEFT: Document Viewer -->
+            <div class="doc-viewer-panel" style="min-height: 550px;">
+              <div class="widget-header" style="padding: 16px 20px; margin: 0; background: rgba(0,0,0,0.2);">
+                <div class="widget-title"><span class="material-icons-round">description</span> Invoice Document</div>
+                <button class="btn btn-sm btn-primary" onclick="document.getElementById('fileUpload').click()" aria-label="Upload Invoice">
+                  <span class="material-icons-round" style="font-size:16px" aria-hidden="true">cloud_upload</span> Upload Invoice
+                </button>
+                <input type="file" id="fileUpload" style="display: none;" accept="image/*,application/pdf" aria-hidden="true">
+              </div>
+              <!-- Drag and Drop Overlay inside viewer -->
+              <div id="invoiceViewer" class="drop-zone" style="flex: 1; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.4); padding: 20px; overflow: auto; position: relative;">
+                <div style="text-align: center; color: var(--text-secondary);">
+                  <span class="material-icons-round" style="font-size: 64px; opacity: 0.3;" aria-hidden="true">cloud_upload</span>
+                  <p style="margin-top: 16px; max-width: 280px;">Drag & Drop or Upload a vendor invoice (PDF or Image) for AI verification.</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- RIGHT: Finance Intelligence -->
+            <div class="data-entry-panel">
+              <!-- Advanced Metrics -->
+              <div class="finance-widget">
+                <div class="widget-header">
+                  <div class="widget-title"><span class="material-icons-round" aria-hidden="true">storefront</span> Vendor Intelligence & FX</div>
+                </div>
+                <div style="margin-top: 8px;">
+                  <span class="kpi-label" style="display: block; margin-bottom: 8px;">7-Day FX Trend (USD to EUR)</span>
+                  <div class="sparkline-container" id="sparklineContainer">
+                    <!-- SVG injected by finance.js -->
+                  </div>
+                </div>
+              </div>
+
+              <!-- Reverse Tax Calculator -->
+              <div class="finance-widget">
+                <div class="widget-header">
+                  <div class="widget-title"><span class="material-icons-round" aria-hidden="true">calculate</span> GST/Tax Intelligence</div>
+                </div>
+                <div class="input-group" style="margin-bottom: 16px;">
+                  <input type="text" id="grossAmount" class="input-field tabular-data" placeholder="Gross Amount" value="0" aria-label="Gross Amount">
+                  <label class="input-label" for="grossAmount">Gross Invoice Amount (incl. Tax)</label>
+                </div>
+                <div class="tax-grid">
+                  <div class="kpi-card" style="background: rgba(255,255,255,0.05); padding: 12px;">
+                    <span class="kpi-label">Base Price</span>
+                    <span class="kpi-value tabular-data" id="basePrice">$0.00</span>
+                  </div>
+                  <div class="kpi-card" style="background: rgba(255,255,255,0.05); padding: 12px;">
+                    <span class="kpi-label">Total Tax (18%)</span>
+                    <span class="kpi-value tabular-data" id="totalTax">$0.00</span>
+                  </div>
+                  <div class="kpi-card" style="background: rgba(255,255,255,0.05); padding: 12px;">
+                    <span class="kpi-label">CGST (9%)</span>
+                    <span class="kpi-value tabular-data" id="cgst">$0.00</span>
+                  </div>
+                  <div class="kpi-card" style="background: rgba(255,255,255,0.05); padding: 12px;">
+                    <span class="kpi-label">SGST (9%)</span>
+                    <span class="kpi-value tabular-data" id="sgst">$0.00</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+</div>
+
+<div class="toast" id="sysToast" role="alert" aria-live="assertive">
+  <span class="material-icons-round toast-icon" aria-hidden="true">check_circle</span>
+  <span id="toastMsg" style="font-weight: 500;">Action completed</span>
+</div>
+
+<!-- Admin Modal -->
+<dialog id="adminModal" class="glass-panel" aria-labelledby="adminTitle">
+  <h3 id="adminTitle" style="margin-bottom: 16px; font-family: var(--font-display);">Role Management</h3>
+  <div class="input-group">
+    <select id="roleSelect" class="input-field" aria-label="Select Role">
+      <option value="DEV">Developer</option>
+      <option value="FIN">Finance</option>
+      <option value="OWN">Owner</option>
+      <option value="ADM">Admin</option>
+    </select>
+  </div>
+  <div class="dialog-actions">
+    <button class="btn" style="background: transparent; border: 1px solid var(--border); color: var(--text-primary);" onclick="document.getElementById('adminModal').close()">Cancel</button>
+    <button class="btn btn-primary" onclick="app.updateRole()">Save</button>
+  </div>
+</dialog>
+
+<script src="finance.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
