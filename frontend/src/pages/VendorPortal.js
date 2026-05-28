@@ -70,7 +70,7 @@ const VendorPortal = () => {
       if (res.ok) {
         const data = await res.json();
         setExtractedData(data);
-        setInvoiceForm({ amount: data.extracted_amount || '', purpose: data.purpose || '' });
+        setInvoiceForm({ amount: '', purpose: data.purpose || '' });
         setTimeout(() => setUploadProgress(0), 800);
       } else {
         const err = await res.json();
@@ -188,7 +188,7 @@ const VendorPortal = () => {
               </Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <TextField
-                  label="Extracted Amount ($)"
+                  label="Extracted Amount (₹)"
                   type="number"
                   fullWidth
                   size="small"
@@ -205,9 +205,13 @@ const VendorPortal = () => {
                   onChange={(e) => setInvoiceForm({ ...invoiceForm, purpose: e.target.value })}
                 />
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
-                  <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: 120 }}>
-                    {extractedData.filename}
-                  </Typography>
+                  <Button 
+                    variant="text" 
+                    color="error" 
+                    onClick={() => { setExtractedData(null); setInvoiceForm({ amount: '', purpose: '' }); }}
+                  >
+                    Remove
+                  </Button>
                   <Button 
                     variant="contained" 
                     color="primary" 
@@ -251,7 +255,7 @@ const VendorPortal = () => {
                       </Tooltip>
                     </TableCell>
                     <TableCell>
-                      <Typography variant="body2" fontWeight={600} color="primary.light">${inv.amount}</Typography>
+                      <Typography variant="body2" fontWeight={600} color="primary.light">₹{inv.amount}</Typography>
                     </TableCell>
                     <TableCell>
                       <Typography variant="caption" color="text.secondary">{new Date(inv.ts).toLocaleDateString('en-IN')}</Typography>

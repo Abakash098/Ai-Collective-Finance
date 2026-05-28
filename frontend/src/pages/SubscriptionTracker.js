@@ -86,7 +86,7 @@ const SubscriptionTracker = () => {
                     </Typography>
                   </TableCell>
                   <TableCell>{row.vendor_id}</TableCell>
-                  <TableCell fontWeight="bold" color="primary.light">${row.cost}</TableCell>
+                  <TableCell fontWeight="bold" color="primary.light">₹{row.cost}</TableCell>
                   <TableCell>{row.billing_cycle}</TableCell>
                   <TableCell>{row.next_renewal_date}</TableCell>
                   <TableCell align="center">
@@ -108,7 +108,7 @@ const SubscriptionTracker = () => {
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2, minWidth: 400 }}>
           <TextField label="App Name" fullWidth value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
           <TextField label="Vendor" fullWidth value={formData.vendor_id} onChange={e => setFormData({...formData, vendor_id: e.target.value})} />
-          <TextField label="Cost" type="number" fullWidth value={formData.cost} onChange={e => setFormData({...formData, cost: e.target.value})} />
+          <TextField label="Cost (₹)" type="number" fullWidth value={formData.cost} onChange={e => setFormData({...formData, cost: e.target.value})} />
           <TextField label="Next Renewal Date" type="date" InputLabelProps={{ shrink: true }} fullWidth value={formData.next_renewal_date} onChange={e => setFormData({...formData, next_renewal_date: e.target.value})} />
         </DialogContent>
         <DialogActions>

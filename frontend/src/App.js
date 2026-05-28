@@ -1,7 +1,8 @@
 import React from 'react';
-import { Routes, Route } from 'react-router-dom';
-import { Box, AppBar, Toolbar, Typography, IconButton, Avatar, Menu, MenuItem } from '@mui/material';
+import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
+import { Box, AppBar, Toolbar, Typography, IconButton, Avatar, Menu, MenuItem, Chip, Divider } from '@mui/material';
 import { SignedIn, SignedOut, SignIn, SignOutButton } from '@clerk/clerk-react';
+import { ExitToApp, Person } from '@mui/icons-material';
 import Sidebar from './components/Sidebar';
 import Dashboard from './pages/Dashboard';
 import SubmitRequest from './pages/SubmitRequest';
@@ -11,93 +12,188 @@ import FinanceReview from './pages/FinanceReview';
 import WorksheetForm from './pages/WorksheetForm';
 import WorksheetAdmin from './pages/WorksheetAdmin';
 import { TechDashboard, ContentDashboard } from './pages/VerifierDashboard';
+import VendorLogin from './pages/VendorLogin';
 import AuthSync from './components/AuthSync';
 import { useSelector, useDispatch } from 'react-redux';
-import { setRole } from './store/authSlice';
-import { useApi } from './hooks/useApi';
+import { logout, setAuth } from './store/authSlice';
 
-function App() {
+const ROLE_LABELS = {
+  DEV: { label: '👨‍💻 Developer', color: '#3b82f6' },
+  EMP: { label: '👤 Employee', color: '#6366f1' },
+  VRF: { label: '👁️ Verifier', color: '#f59e0b' },
+  FIN: { label: '💼 Finance', color: '#22c55e' },
+  OWN: { label: '👑 Owner', color: '#8b5cf6' },
+  ADM: { label: '🛡️ Admin', color: '#ef4444' },
+  VND: { label: '🏪 Vendor', color: '#f97316' },
+};
+
+// Inner layout for authenticated users (Clerk or Vendor)
+function AuthenticatedLayout() {
   const [anchorEl, setAnchorEl] = React.useState(null);
   const { user } = useSelector(state => state.auth);
   const dispatch = useDispatch();
-  const { apiFetch } = useApi();
+  const navigate = useNavigate();
 
   const handleMenu = (event) => setAnchorEl(event.currentTarget);
   const handleClose = () => setAnchorEl(null);
 
-  const changeRoleLocal = async (newRole, name = null) => {
-    try {
-      const res = await apiFetch('/api/me/role', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role: newRole, name })
-      });
-      if (res.ok) {
-        dispatch(setRole(newRole));
-        window.location.reload();
-      } else {
-        console.error('Failed to change role on backend');
-      }
-    } catch (e) {
-      console.error(e);
-    }
+  const roleInfo = ROLE_LABELS[user?.role] || { label: user?.role, color: '#6366f1' };
+  const isVendor = user?.role === 'VND';
+
+  const handleVendorLogout = () => {
+    localStorage.removeItem('vendorToken');
+    localStorage.removeItem('vendorUser');
+    dispatch(logout());
+    navigate('/vendor-login');
     handleClose();
   };
+
   return (
-    <>
+    <Box sx={{ display: 'flex', minHeight: '100vh' }}>
+      <Sidebar />
+      <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+        <AppBar position="static" elevation={0} sx={{ backgroundColor: '#0b0f19', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+          <Toolbar sx={{ minHeight: 56 }}>
+            <Typography variant="body1" component="div" sx={{ flexGrow: 1, color: 'text.secondary', fontSize: 14 }}>
+              Financial Disbursement Platform
+            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              {/* Role Badge */}
+              <Chip
+                label={roleInfo.label}
+                size="small"
+                sx={{
+                  bgcolor: `${roleInfo.color}22`,
+                  color: roleInfo.color,
+                  border: `1px solid ${roleInfo.color}44`,
+                  fontWeight: 600,
+                  fontSize: 11
+                }}
+              />
+              <div>
+                <IconButton size="small" onClick={handleMenu} color="inherit">
+                  <Avatar sx={{
+                    bgcolor: roleInfo.color,
+                    width: 34, height: 34, fontSize: 14
+                  }}>
+                    {user?.name?.charAt(0).toUpperCase()}
+                  </Avatar>
+                </IconButton>
+                <Menu id="menu-appbar" anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleClose}>
+                  <MenuItem disabled sx={{ opacity: '1 !important' }}>
+                    <Box>
+                      <Typography variant="subtitle2" fontWeight={700}>{user?.name}</Typography>
+                      <Typography variant="caption" color="text.secondary">{user?.email || user?.id}</Typography>
+                    </Box>
+                  </MenuItem>
+                  <MenuItem disabled sx={{ opacity: '1 !important' }}>
+                    <Chip
+                      icon={<Person sx={{ fontSize: 14 }} />}
+                      label={roleInfo.label}
+                      size="small"
+                      sx={{ bgcolor: `${roleInfo.color}22`, color: roleInfo.color, fontWeight: 600 }}
+                    />
+                  </MenuItem>
+                  <Divider />
+                  {isVendor ? (
+                    <MenuItem onClick={handleVendorLogout}>
+                      <ExitToApp sx={{ mr: 1, fontSize: 18 }} /> Sign Out
+                    </MenuItem>
+                  ) : (
+                    <MenuItem>
+                      <SignOutButton />
+                    </MenuItem>
+                  )}
+                </Menu>
+              </div>
+            </Box>
+          </Toolbar>
+        </AppBar>
+        <Box component="main" sx={{ flexGrow: 1, p: 3, backgroundColor: '#0b0f19', overflow: 'auto' }}>
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/submit" element={<SubmitRequest />} />
+            <Route path="/subscriptions" element={<SubscriptionTracker />} />
+            <Route path="/employee-dashboard" element={<EmployeeDashboard />} />
+            <Route path="/worksheet" element={<WorksheetForm />} />
+            <Route path="/finance" element={<FinanceReview />} />
+            <Route path="/worksheets-admin" element={<WorksheetAdmin />} />
+            <Route path="/tech-dashboard" element={<TechDashboard />} />
+            <Route path="/content-dashboard" element={<ContentDashboard />} />
+          </Routes>
+        </Box>
+      </Box>
+    </Box>
+  );
+}
+
+// Vendor auth check — restores vendor session from localStorage
+function VendorAuthWrapper({ children }) {
+  const dispatch = useDispatch();
+  const { isAuthenticated } = useSelector(state => state.auth);
+  const [checked, setChecked] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!isAuthenticated) {
+      const vendorToken = localStorage.getItem('vendorToken');
+      const vendorUser = localStorage.getItem('vendorUser');
+      if (vendorToken && vendorUser) {
+        try {
+          const user = JSON.parse(vendorUser);
+          dispatch(setAuth({ user, token: vendorToken }));
+        } catch (e) {
+          localStorage.removeItem('vendorToken');
+          localStorage.removeItem('vendorUser');
+        }
+      }
+    }
+    setChecked(true);
+  }, [isAuthenticated, dispatch]);
+
+  if (!checked) return null;
+  return children;
+}
+
+function App() {
+  const location = useLocation();
+  const { isAuthenticated, user } = useSelector(state => state.auth);
+  const isVendorRoute = location.pathname === '/vendor-login';
+  const isVendorAuthenticated = isAuthenticated && user?.role === 'VND';
+
+  // Vendor login page — always accessible, no Clerk
+  if (isVendorRoute) {
+    return <VendorLogin />;
+  }
+
+  // If vendor is authenticated (from localStorage), show vendor layout directly
+  if (isVendorAuthenticated) {
+    return <AuthenticatedLayout />;
+  }
+
+  return (
+    <VendorAuthWrapper>
       <SignedOut>
         <Box sx={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center', bgcolor: '#0b0f19' }}>
-          <SignIn />
+          <Box sx={{ textAlign: 'center' }}>
+            <SignIn />
+            <Box sx={{ mt: 3 }}>
+              <Typography variant="body2" color="text.secondary" mb={1}>
+                Are you a vendor?
+              </Typography>
+              <a href="/vendor-login" style={{ color: '#6366f1', textDecoration: 'none', fontWeight: 600 }}>
+                🏪 Go to Vendor Login
+              </a>
+            </Box>
+          </Box>
         </Box>
       </SignedOut>
 
       <SignedIn>
         <AuthSync>
-          <Box sx={{ display: 'flex', minHeight: '100vh' }}>
-            <Sidebar />
-            <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-              <AppBar position="static" elevation={0} sx={{ backgroundColor: '#0b0f19', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                <Toolbar sx={{ minHeight: 56 }}>
-                  <Typography variant="body1" component="div" sx={{ flexGrow: 1, color: 'text.secondary', fontSize: 14 }}>
-                    Financial Disbursement Platform
-                  </Typography>
-                  <div>
-                    <IconButton size="small" onClick={handleMenu} color="inherit">
-                      <Avatar sx={{ bgcolor: 'secondary.main', width: 34, height: 34, fontSize: 14 }}>{user?.name?.charAt(0).toUpperCase()}</Avatar>
-                    </IconButton>
-                    <Menu id="menu-appbar" anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleClose}>
-                      <MenuItem disabled>Change Role (UI Demo)</MenuItem>
-                      <MenuItem onClick={() => changeRoleLocal('DEV')}>👨‍💻 Developer</MenuItem>
-                      <MenuItem onClick={() => changeRoleLocal('EMP')}>👤 Employee</MenuItem>
-                      <MenuItem onClick={() => changeRoleLocal('VRF', 'Rup')}>👁️ Verifier - Rup (Tech)</MenuItem>
-                      <MenuItem onClick={() => changeRoleLocal('VRF', 'Samaja')}>👁️ Verifier - Samaja (Content)</MenuItem>
-                      <MenuItem onClick={() => changeRoleLocal('FIN')}>💼 Finance (Yash)</MenuItem>
-                      <MenuItem onClick={() => changeRoleLocal('OWN')}>👑 Owner (Debojit)</MenuItem>
-                      <MenuItem onClick={() => changeRoleLocal('ADM')}>🛡️ Admin</MenuItem>
-                      <MenuItem onClick={() => changeRoleLocal('VND')}>🏪 Vendor</MenuItem>
-                      <MenuItem><SignOutButton /></MenuItem>
-                    </Menu>
-                  </div>
-                </Toolbar>
-              </AppBar>
-              <Box component="main" sx={{ flexGrow: 1, p: 3, backgroundColor: '#0b0f19', overflow: 'auto' }}>
-                <Routes>
-                  <Route path="/" element={<Dashboard />} />
-                  <Route path="/submit" element={<SubmitRequest />} />
-                  <Route path="/subscriptions" element={<SubscriptionTracker />} />
-                  <Route path="/employee-dashboard" element={<EmployeeDashboard />} />
-                  <Route path="/worksheet" element={<WorksheetForm />} />
-                  <Route path="/finance" element={<FinanceReview />} />
-                  <Route path="/worksheets-admin" element={<WorksheetAdmin />} />
-                  <Route path="/tech-dashboard" element={<TechDashboard />} />
-                  <Route path="/content-dashboard" element={<ContentDashboard />} />
-                </Routes>
-              </Box>
-            </Box>
-          </Box>
+          <AuthenticatedLayout />
         </AuthSync>
       </SignedIn>
-    </>
+    </VendorAuthWrapper>
   );
 }
 

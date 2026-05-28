@@ -14,10 +14,18 @@ export function useApi() {
   const dispatch = useDispatch();
 
   const apiFetch = useCallback(async (url, options = {}) => {
-    const token = await getToken();
-    
-    if (token) {
-      dispatch(updateToken(token));
+    let token = null;
+    try {
+      token = await getToken();
+      if (token) {
+        dispatch(updateToken(token));
+      }
+    } catch (e) {
+      // Ignore Clerk errors for local vendor sessions
+    }
+
+    if (!token) {
+      token = localStorage.getItem('vendorToken');
     }
 
     const headers = { ...(options.headers || {}) };

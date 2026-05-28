@@ -74,8 +74,13 @@ const actionLimiter = rateLimit({
 
 app.use(express.json({ limit: '10mb' }));
 
-// Serve static frontend files (style.css, app.js, finance.js, etc.)
-app.use(express.static(path.join(__dirname)));
+// Serve static frontend files (if frontend/build exists, serve it, otherwise serve root for local vanilla files)
+const frontendBuildPath = path.join(__dirname, 'frontend', 'build');
+if (fs.existsSync(frontendBuildPath)) {
+  app.use(express.static(frontendBuildPath));
+} else {
+  app.use(express.static(path.join(__dirname)));
+}
 
 // Set trust proxy for correct IP (needed because React proxy adds X-Forwarded-For)
 app.set('trust proxy', 1);
@@ -268,7 +273,7 @@ async function initPostgres(pgConfig) {
     from_state TEXT NOT NULL,
     to_state TEXT NOT NULL,
     required_role TEXT NOT NULL,
-    UNIQUE(from_state, to_state)
+    UNIQUE(from_state, to_state, required_role)
   )`);
 
   await pool.query(`CREATE TABLE IF NOT EXISTS vendors (
@@ -446,7 +451,7 @@ function initSQLite() {
         from_state TEXT NOT NULL,
         to_state TEXT NOT NULL,
         required_role TEXT NOT NULL,
-        UNIQUE(from_state, to_state)
+        UNIQUE(from_state, to_state, required_role)
       )`);
 
       sqliteDb.run(`CREATE TABLE IF NOT EXISTS vendors (
@@ -592,6 +597,43 @@ function signAuditEntry(reqId, actor, prev, next, comment, ts) {
   return crypto.createHmac('sha256', AUDIT_SECRET).update(payload).digest('hex');
 }
 
+// ══════════ EMAIL → ROLE MAPPING (Fixed Roles) ══════════
+const EMAIL_ROLE_MAP = {
+  'rayabakash@gmail.com':      { role: 'DEV', name: 'Abakash' },
+  'abakashray57@gmail.com':    { role: 'EMP', name: 'Abakash' },
+  'abakashray772@gmail.com':   { role: 'VRF', name: 'Rup' },
+  'abakashray846@gmail.com':   { role: 'VRF', name: 'Samaja' },
+  'abakashray003@gmail.com':   { role: 'FIN', name: 'Yash' },
+  'rayabakash0@gmail.com':     { role: 'OWN', name: 'Debojit' },
+  'cse2022017@rcciit.org.in':  { role: 'ADM', name: 'Admin' },
+};
+
+function getRoleByEmail(email) {
+  if (!email) return null;
+  return EMAIL_ROLE_MAP[email.toLowerCase()] || null;
+}
+
+// ══════════ VENDOR AUTH (Simple ID/Password, No Clerk) ══════════
+const VENDOR_JWT_SECRET = process.env.VENDOR_JWT_SECRET || 'vendor-jwt-secret-key-2024';
+const jwt = require('jsonwebtoken');
+
+// Default vendor accounts (seeded into DB on startup)
+const DEFAULT_VENDORS = [
+  { id: 'vendor001', password: 'vendor@123', name: 'Default Vendor' },
+];
+
+function initVendorAccounts() {
+  DEFAULT_VENDORS.forEach(v => {
+    const hashedPw = crypto.createHash('sha256').update(v.password).digest('hex');
+    db.run('INSERT OR IGNORE INTO users (id, name, role, hash, updated_at) VALUES (?, ?, ?, ?, ?)',
+      [v.id, v.name, 'VND', hashedPw, new Date().toISOString()]);
+  });
+  logger.info('Vendor accounts initialized');
+}
+
+// Initialize vendor accounts after DB is ready
+setTimeout(() => initVendorAccounts(), 1000);
+
 // ══════════ AUTH MIDDLEWARE ══════════
 async function authenticateToken(req, res, next) {
   try {
@@ -601,7 +643,26 @@ async function authenticateToken(req, res, next) {
     }
     const token = authHeader.split(' ')[1];
     
-    // Verify the Clerk JWT token
+    // ── Try Vendor JWT first (vendor tokens start with 'VND-' prefix in the payload) ──
+    try {
+      const vendorPayload = jwt.verify(token, VENDOR_JWT_SECRET);
+      if (vendorPayload && vendorPayload.vendorId) {
+        // This is a vendor token
+        db.get('SELECT * FROM users WHERE id = ?', [vendorPayload.vendorId], (err, user) => {
+          if (err) return next(err);
+          if (!user) return res.status(401).json({ error: 'Vendor account not found' });
+          req.user = user;
+          req.clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+          req.clientAgent = req.headers['user-agent'] || 'unknown';
+          next();
+        });
+        return;
+      }
+    } catch (vendorErr) {
+      // Not a vendor token, continue to Clerk verification
+    }
+
+    // ── Verify the Clerk JWT token ──
     const payload = await verifyToken(token, { secretKey: CLERK_SECRET_KEY });
     if (!payload || !payload.sub) {
       return res.status(401).json({ error: 'Invalid token' });
@@ -612,10 +673,15 @@ async function authenticateToken(req, res, next) {
     db.get('SELECT * FROM users WHERE id = ?', [userId], (err, user) => {
       if (err) return next(err);
       if (!user) {
-        logger.warn({ userId }, 'User not in DB - auto-creating with DEV role');
-        const newUser = { id: userId, name: payload.name || 'User', role: 'DEV' };
+        // Auto-create user — use email-based role if available
+        const emailMapping = getRoleByEmail(payload.email);
+        const assignedRole = emailMapping ? emailMapping.role : 'DEV';
+        const assignedName = emailMapping ? emailMapping.name : (payload.name || 'User');
+        logger.info({ userId, email: payload.email, assignedRole, assignedName }, 'New user auto-created with email-based role');
+        
+        const newUser = { id: userId, name: assignedName, role: assignedRole };
         db.run('INSERT OR IGNORE INTO users (id, name, role, hash, updated_at) VALUES (?, ?, ?, ?, ?)',
-          [userId, newUser.name, 'DEV', 'CLERK_OAUTH', new Date().toISOString()], (insertErr) => {
+          [userId, assignedName, assignedRole, 'CLERK_OAUTH', new Date().toISOString()], (insertErr) => {
             if (insertErr) return next(insertErr);
             req.user = newUser;
             req.clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
@@ -623,6 +689,20 @@ async function authenticateToken(req, res, next) {
             next();
           });
         return;
+      }
+      // User exists — always enforce the email-mapped role (override DB)
+      // We need the email from the Clerk payload to enforce this
+      if (payload.email) {
+        const emailMapping = getRoleByEmail(payload.email);
+        if (emailMapping) {
+          // Override DB role with email-mapped role
+          if (user.role !== emailMapping.role || user.name !== emailMapping.name) {
+            db.run('UPDATE users SET role = ?, name = ?, updated_at = ? WHERE id = ?',
+              [emailMapping.role, emailMapping.name, new Date().toISOString(), userId]);
+            user.role = emailMapping.role;
+            user.name = emailMapping.name;
+          }
+        }
       }
       req.user = user;
       req.clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
@@ -677,24 +757,33 @@ app.post('/api/sync-user', async (req, res, next) => {
     const payload = await verifyToken(token, { secretKey: CLERK_SECRET_KEY });
     if (!payload || !payload.sub) return res.status(401).json({ error: 'Invalid token' });
     
-    const { id, name, role } = req.body;
+    const { id, name, email } = req.body;
     const userId = payload.sub; // use verified userId from token, not body
-    const userName = name || payload.name || 'User';
+    const userEmail = email || payload.email || '';
     
-    // Only insert if it doesn't exist to prevent overwriting the role
-    db.get('SELECT role FROM users WHERE id = ?', [userId], (err, user) => {
+    // Look up role by email from the fixed mapping
+    const emailMapping = getRoleByEmail(userEmail);
+    const assignedRole = emailMapping ? emailMapping.role : 'DEV';
+    const assignedName = emailMapping ? emailMapping.name : (name || payload.name || 'User');
+    
+    db.get('SELECT role, name FROM users WHERE id = ?', [userId], (err, user) => {
       if (err) return next(err);
       if (!user) {
+        // New user — insert with email-mapped role
         db.run('INSERT INTO users (id, name, role, hash, updated_at) VALUES (?, ?, ?, ?, ?)',
-          [userId, userName, role || 'DEV', 'CLERK_OAUTH', new Date().toISOString()], (err) => {
+          [userId, assignedName, assignedRole, 'CLERK_OAUTH', new Date().toISOString()], (err) => {
             if (err) return next(err);
-            logger.info({ userId, role }, 'New user synced');
-            res.json({ success: true, role: role || 'DEV' });
+            logger.info({ userId, email: userEmail, role: assignedRole, name: assignedName }, 'New user synced with email-based role');
+            res.json({ success: true, role: assignedRole, name: assignedName });
           });
       } else {
-        // Update name in case it changed, preserve role
-        db.run('UPDATE users SET name = ?, updated_at = ? WHERE id = ?', [userName, new Date().toISOString(), userId]);
-        res.json({ success: true, role: user.role });
+        // Existing user — always enforce the email-mapped role
+        if (emailMapping && (user.role !== assignedRole || user.name !== assignedName)) {
+          db.run('UPDATE users SET role = ?, name = ?, updated_at = ? WHERE id = ?',
+            [assignedRole, assignedName, new Date().toISOString(), userId]);
+          logger.info({ userId, email: userEmail, oldRole: user.role, newRole: assignedRole }, 'User role corrected by email mapping');
+        }
+        res.json({ success: true, role: assignedRole, name: assignedName });
       }
     });
   } catch (err) {
@@ -708,25 +797,43 @@ app.get('/api/me', authenticateToken, (req, res) => {
   res.json(req.user);
 });
 
-// Update Current User's Role (for UI Demo / role switching)
-app.post('/api/me/role', authenticateToken, (req, res, next) => {
-  const { role, name } = req.body;
-  if (!['DEV', 'FIN', 'OWN', 'ADM', 'VND', 'EMP', 'VRF'].includes(role)) {
-    return res.status(400).json({ error: 'Invalid role' });
+// ══════════ DISABLED: Role switching is no longer allowed — roles are fixed by email ══════════
+// app.post('/api/me/role', authenticateToken, (req, res) => {
+//   return res.status(403).json({ error: 'Role switching is disabled. Roles are assigned by email.' });
+// });
+
+// ══════════ VENDOR LOGIN (Simple ID/Password) ══════════
+app.post('/api/vendor/login', (req, res) => {
+  const { vendorId, password } = req.body;
+  if (!vendorId || !password) {
+    return res.status(400).json({ error: 'Vendor ID and Password are required' });
   }
-  if (name) {
-    db.run('UPDATE users SET role = ?, name = ?, updated_at = ? WHERE id = ?', [role, name, new Date().toISOString(), req.user.id], function(err) {
-      if (err) return next(err);
-      logger.info({ userId: req.user.id, newRole: role, newName: name }, 'User updated own role and name');
-      res.json({ success: true, role, name });
+
+  const hashedPw = crypto.createHash('sha256').update(password).digest('hex');
+  
+  db.get('SELECT * FROM users WHERE id = ? AND role = ? AND hash = ?', [vendorId, 'VND', hashedPw], (err, user) => {
+    if (err) {
+      logger.error({ err }, 'Vendor login DB error');
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid Vendor ID or Password' });
+    }
+
+    // Generate a vendor JWT
+    const vendorToken = jwt.sign(
+      { vendorId: user.id, name: user.name, role: 'VND' },
+      VENDOR_JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    logger.info({ vendorId: user.id }, 'Vendor logged in successfully');
+    res.json({
+      success: true,
+      token: vendorToken,
+      user: { id: user.id, name: user.name, role: 'VND' }
     });
-  } else {
-    db.run('UPDATE users SET role = ?, updated_at = ? WHERE id = ?', [role, new Date().toISOString(), req.user.id], function(err) {
-      if (err) return next(err);
-      logger.info({ userId: req.user.id, newRole: role }, 'User updated own role');
-      res.json({ success: true, role });
-    });
-  }
+  });
 });
 
 // Get Requests (paginated, excludes soft-deleted)
@@ -779,6 +886,7 @@ app.post('/api/requests', authenticateToken, validate(createRequestSchema), (req
   const { amount, purpose, file_hash, metadata, verifier } = req.validatedBody;
   const id = 'REQ-' + crypto.randomUUID().split('-')[0].toUpperCase();
   const ts = new Date().toISOString();
+  // All requests start at PND — Debojit verifies as 1st-line first, then Finance, then Owner auth
   const sig = signAuditEntry(id, req.user.id, '-', 'PND', 'Request submitted. Awaiting first-line verification.', ts);
 
   db.serialize(() => {
@@ -823,6 +931,26 @@ app.post('/api/action', authenticateToken, actionLimiter, validate(actionSchema)
     if (err) return next(err);
     if (!reqRow) return res.status(404).json({ error: 'Request not found' });
 
+    // Enforce Verifier Isolation:
+    // If the request is pending first-line review (PND) and moving to verified (VRF),
+    // ensure the actor is the assigned verifier.
+    // Matching rules (any one is sufficient):
+    //   1. req.user.name matches verifier field (case-insensitive)
+    //   2. The verifier field is 'debojit' and the user's role is 'OWN' (Debojit is always the Owner)
+    //   3. ADM can do anything
+    if (reqRow.status === 'PND' && nextState === 'VRF') {
+      if (reqRow.verifier) {
+        const verifierLower = reqRow.verifier.toLowerCase();
+        const userNameLower = (req.user.name || '').toLowerCase();
+        const isAssignedDebojit = verifierLower === 'debojit' && req.user.role === 'OWN';
+        const nameMatches = verifierLower === userNameLower;
+        const isAdmin = req.user.role === 'ADM';
+        if (!nameMatches && !isAssignedDebojit && !isAdmin) {
+          return res.status(403).json({ error: `Verification blocked: This request is specifically assigned to ${reqRow.verifier}. Only they can verify it.` });
+        }
+      }
+    }
+
     // Maker-checker: prevent self-approval (disabled for demo so you can test the entire workflow with a single account!)
     /*
     if (reqRow.requester === req.user.id && ['FIN', 'OWN', 'DSB'].includes(nextState)) {
@@ -866,6 +994,29 @@ app.get('/api/audit', authenticateToken, (req, res, next) => {
   const page = Math.max(1, parseInt(req.query.page) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
   const offset = (page - 1) * limit;
+  const reqId = req.query.reqId;
+
+  if (reqId) {
+    // Fetch logs for a specific request, join with users to get actor names
+    const countQuery = "SELECT COUNT(*) as total FROM audit_logs WHERE reqId = ?";
+    const dataQuery = "SELECT a.*, u.name as actor_name, u.role as actor_role FROM audit_logs a LEFT JOIN users u ON a.actor = u.id WHERE a.reqId = ? ORDER BY a.id ASC LIMIT ? OFFSET ?";
+    
+    db.get(countQuery, [reqId], (err, countRow) => {
+      if (err) return next(err);
+      db.all(dataQuery, [reqId, limit, offset], (err, rows) => {
+        if (err) return next(err);
+        res.json({
+          data: rows,
+          pagination: {
+            page, limit,
+            total: countRow ? countRow.total : 0,
+            totalPages: Math.ceil((countRow ? countRow.total : 0) / limit)
+          }
+        });
+      });
+    });
+    return;
+  }
 
   let countQuery = "SELECT COUNT(*) as total FROM audit_logs";
   let dataQuery = "SELECT * FROM audit_logs ORDER BY id ASC LIMIT ? OFFSET ?";
@@ -1019,9 +1170,13 @@ const upload = multer({
   storage,
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
   fileFilter: (req, file, cb) => {
-    const allowed = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'];
+    const allowed = [
+      'image/jpeg', 'image/jpg', 'image/png', 'image/webp',
+      'image/gif', 'image/bmp', 'image/tiff', 'image/heic', 'image/heif',
+      'application/pdf'
+    ];
     if (allowed.includes(file.mimetype)) cb(null, true);
-    else cb(new Error('Only PDF, JPG, PNG allowed'));
+    else cb(new Error(`File type "${file.mimetype}" is not supported. Allowed: JPG, PNG, WEBP, GIF, BMP, TIFF, HEIC, PDF`));
   }
 });
 
@@ -1029,25 +1184,295 @@ const upload = multer({
 app.use('/uploads', express.static(uploadsDir));
 
 // Vendor Invoice Upload - returns file hash to be submitted with request form
-app.post('/api/invoices/upload', authenticateToken, upload.single('invoice'), (req, res, next) => {
+// ══════════ HIGH-CLASS OCR SYSTEM (Gemini + Tesseract Fallback) ══════════
+
+const https = require('https');
+
+// Dynamic module loading to prevent crashes if packages aren't installed yet
+let sharp = null;
+try { sharp = require('sharp'); } catch (e) { logger.warn('sharp is not installed. Image preprocessing bypassed.'); }
+
+let tesseract = null;
+try { tesseract = require('tesseract.js'); } catch (e) { logger.warn('tesseract.js is not installed. Local Tesseract OCR fallback disabled.'); }
+
+let pdfParse = null;
+try { pdfParse = require('pdf-parse'); } catch (e) { logger.warn('pdf-parse is not installed. Local PDF text extraction fallback disabled.'); }
+
+// Helper to preprocess image using sharp for better OCR results
+async function preprocessImage(filePath) {
+  if (!sharp) return filePath;
+  try {
+    const outputPath = filePath + '_preprocessed.png';
+    await sharp(filePath)
+      .grayscale()
+      .normalize()
+      .toFile(outputPath);
+    return outputPath;
+  } catch (err) {
+    logger.warn({ err: err.message }, 'Sharp image preprocessing failed. Using raw file.');
+    return filePath;
+  }
+}
+
+// Call Gemini 1.5 Flash Vision API natively
+async function callGeminiVision(apiKey, base64Data, mimeType) {
+  return new Promise((resolve, reject) => {
+    // Structured output prompt for invoice extraction
+    const promptText = `You are a professional invoice OCR and data extraction system. Carefully analyze this invoice image and extract all financial information.
+
+Return ONLY a valid JSON object with NO markdown, NO code fences, NO backticks. Just raw JSON:
+{"amount": <number: base invoice amount before tax, or total amount if no breakdown>, "vendorName": "<string: the seller/company name at top of invoice>", "invoiceDate": "<string: date in YYYY-MM-DD format>", "gstNumber": "<string: 15-char Indian GSTIN if present, otherwise null>", "purpose": "<string: 1 sentence describing what this invoice is for>", "confidence": <number: 0-100 how confident you are>}`;
+
+    // Use image/jpeg as safe fallback for PDF inlineData
+    const safeMimeType = mimeType === 'application/pdf' ? 'image/jpeg' : mimeType;
+
+    const requestBody = {
+      contents: [{
+        parts: [
+          { text: promptText },
+          { inlineData: { mimeType: safeMimeType, data: base64Data } }
+        ]
+      }],
+      generationConfig: {
+        temperature: 0.1,
+        maxOutputTokens: 1024
+      }
+    };
+
+    const payloadBuffer = Buffer.from(JSON.stringify(requestBody), 'utf8');
+
+    const options = {
+      hostname: 'generativelanguage.googleapis.com',
+      path: `/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': payloadBuffer.length
+      }
+    };
+
+    const req = https.request(options, (res) => {
+      let body = '';
+      res.on('data', (chunk) => body += chunk);
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(body);
+
+          // Log the full response for debugging
+          if (parsed.error) {
+            logger.error({ geminiError: parsed.error }, 'Gemini API returned an error');
+            return reject(new Error(parsed.error.message || 'Gemini API error'));
+          }
+
+          if (parsed.candidates && parsed.candidates[0] && parsed.candidates[0].content && parsed.candidates[0].content.parts[0]) {
+            let responseText = parsed.candidates[0].content.parts[0].text || '';
+            // Strip markdown code fences if Gemini wraps the JSON
+            responseText = responseText.trim().replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '');
+            
+            // Try clean parse first
+            try {
+              const extracted = JSON.parse(responseText);
+              return resolve(extracted);
+            } catch (parseErr) {
+              // Gemini may have hit MAX_TOKENS mid-JSON — extract partial fields via regex
+              logger.warn({ parseErr: parseErr.message }, 'Gemini JSON truncated, attempting partial field extraction...');
+              const partial = {};
+              const amtMatch = responseText.match(/"amount"\s*:\s*([\d.]+)/);
+              if (amtMatch) partial.amount = parseFloat(amtMatch[1]);
+              const vendorMatch = responseText.match(/"vendorName"\s*:\s*"([^"]+)"/);
+              if (vendorMatch) partial.vendorName = vendorMatch[1];
+              const dateMatch = responseText.match(/"invoiceDate"\s*:\s*"([^"]+)"/);
+              if (dateMatch) partial.invoiceDate = dateMatch[1];
+              const gstMatch = responseText.match(/"gstNumber"\s*:\s*"([^"]+)"/);
+              if (gstMatch) partial.gstNumber = gstMatch[1];
+              const purposeMatch = responseText.match(/"purpose"\s*:\s*"([^"]+)"/);
+              if (purposeMatch) partial.purpose = purposeMatch[1];
+              const confMatch = responseText.match(/"confidence"\s*:\s*([\d]+)/);
+              if (confMatch) partial.confidence = parseInt(confMatch[1]);
+              
+              if (partial.amount || partial.vendorName) {
+                partial.confidence = partial.confidence || 75;
+                logger.info({ partial }, 'Partial field extraction from truncated Gemini response succeeded.');
+                return resolve(partial);
+              }
+              return reject(new Error('Gemini JSON response could not be parsed even partially.'));
+            }
+          }
+
+          // Check if response was blocked or empty
+          const blockReason = parsed.candidates?.[0]?.finishReason;
+          logger.warn({ blockReason, parsed }, 'Gemini returned no usable candidates');
+          return reject(new Error(`Gemini returned no candidates. Reason: ${blockReason || 'unknown'}`));
+        } catch (e) {
+          logger.error({ err: e.message, responseBody: body.substring(0, 500) }, 'Error parsing Gemini response');
+          return reject(e);
+        }
+      });
+    });
+
+    req.on('error', (e) => {
+      logger.error({ err: e.message }, 'Gemini HTTPS request error');
+      reject(e);
+    });
+    req.write(payloadBuffer);
+    req.end();
+  });
+}
+
+// Regex-based text parsing heuristic for fallback OCR
+function parseRawInvoiceText(text, originalFilename) {
+  let amount = 1000;
+  // Look for total/amount patterns (e.g. Total: ₹15,000.00, RS 2400)
+  const amtMatch = text.match(/(?:total|amount|amt|payable|sum|net|gross)\s*(?:rs\.?|inr|₹|usd|\$)?\s*([\d,]+(?:\.\d{2})?)/i);
+  if (amtMatch) {
+    amount = parseFloat(amtMatch[1].replace(/,/g, ''));
+  }
+
+  // Look for 15-character GSTIN pattern
+  const gstMatch = text.match(/\b\d{2}[A-Z]{5}\d{4}[A-Z]{1}[A-Z\d]{1}[Z]{1}[A-Z\d]{1}\b/);
+  const gstNumber = gstMatch ? gstMatch[0] : null;
+
+  // Look for dates
+  const dateMatch = text.match(/\b(?:\d{1,2}[-\/.]\d{1,2}[-\/.]\d{2,4})|(?:\d{4}[-\/.]\d{1,2}[-\/.]\d{1,2})\b/);
+  const invoiceDate = dateMatch ? dateMatch[0] : new Date().toISOString().split('T')[0];
+
+  // Look for vendor name
+  let vendorName = 'Unknown Vendor';
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  if (lines.length > 0) {
+    vendorName = lines[0].substring(0, 40);
+  }
+
+  return {
+    amount,
+    vendorName,
+    invoiceDate,
+    gstNumber,
+    purpose: `Extracted from ${originalFilename}`,
+    confidence: 60,
+    engine: 'Tesseract OCR (Local Fallback)'
+  };
+}
+
+// Main OCR Processor Pipeline
+async function processInvoiceOCR(filePath, originalFilename, mimeType) {
+  const isPdf = mimeType === 'application/pdf';
+  const fileBuffer = fs.readFileSync(filePath);
+  const base64Data = fileBuffer.toString('base64');
+  
+  const geminiKey = process.env.GEMINI_API_KEY;
+  
+  // ── OPTION A: Gemini AI (Superb handwriting support) ──
+  if (geminiKey && geminiKey !== 'your_key_here') {
+    try {
+      logger.info({ filename: originalFilename }, 'Running high-class Gemini Vision OCR...');
+      const result = await callGeminiVision(geminiKey, base64Data, mimeType);
+      logger.info({ filename: originalFilename, result }, 'Gemini OCR extraction completed.');
+      return {
+        success: true,
+        extracted_amount: result.amount || 1000,
+        vendor_name: result.vendorName || 'Unknown Vendor',
+        invoice_date: result.invoiceDate || new Date().toISOString().split('T')[0],
+        gst_number: result.gstNumber || null,
+        purpose: result.purpose || `Vendor Invoice: ${originalFilename}`,
+        ocr_confidence: result.confidence || 90,
+        ocr_engine: 'Gemini 2.5 Flash (AI OCR)'
+      };
+    } catch (err) {
+      logger.warn({ err: err.message }, 'Gemini OCR failed. Falling back to local methods...');
+    }
+  }
+
+  // ── OPTION B: PDF Text Extraction ──
+  if (isPdf && pdfParse) {
+    try {
+      logger.info({ filename: originalFilename }, 'Attempting local PDF text parsing fallback...');
+      const pdfData = await pdfParse(fileBuffer);
+      const text = pdfData.text;
+      if (text && text.trim().length > 5) {
+        const parsed = parseRawInvoiceText(text, originalFilename);
+        return {
+          success: true,
+          extracted_amount: parsed.amount,
+          vendor_name: parsed.vendorName,
+          invoice_date: parsed.invoiceDate,
+          gst_number: parsed.gstNumber,
+          purpose: parsed.purpose,
+          ocr_confidence: parsed.confidence,
+          ocr_engine: 'Local PDF Text Engine'
+        };
+      }
+    } catch (err) {
+      logger.warn({ err: err.message }, 'Local PDF text parsing failed.');
+    }
+  }
+
+  // ── OPTION C: Tesseract OCR (Local Fallback) ──
+  if (!isPdf && tesseract) {
+    try {
+      logger.info({ filename: originalFilename }, 'Running local Tesseract OCR fallback...');
+      const preprocessedPath = await preprocessImage(filePath);
+      const { data: { text } } = await tesseract.recognize(preprocessedPath, 'eng');
+      
+      // Clean up preprocessed file if we created one
+      if (preprocessedPath !== filePath) {
+        try { fs.unlinkSync(preprocessedPath); } catch (e) {}
+      }
+
+      if (text && text.trim().length > 5) {
+        const parsed = parseRawInvoiceText(text, originalFilename);
+        return {
+          success: true,
+          extracted_amount: parsed.amount,
+          vendor_name: parsed.vendorName,
+          invoice_date: parsed.invoiceDate,
+          gst_number: parsed.gstNumber,
+          purpose: parsed.purpose,
+          ocr_confidence: parsed.confidence,
+          ocr_engine: 'Tesseract OCR (Local)'
+        };
+      }
+    } catch (err) {
+      logger.error({ err: err.message }, 'Tesseract OCR fallback failed.');
+    }
+  }
+
+  // ── OPTION D: Heuristic File Metadata Fallback ──
+  logger.warn('All OCR pipelines failed/disabled. Falling back to heuristic defaults.');
+  const baseAmount = (fileBuffer.length % 9000) + 1000;
+  const amount = Math.round(baseAmount / 10) * 10;
+  return {
+    success: true,
+    extracted_amount: amount,
+    vendor_name: 'Unknown Vendor (OCR Failed)',
+    invoice_date: new Date().toISOString().split('T')[0],
+    gst_number: null,
+    purpose: `Vendor Invoice: ${originalFilename} (AI/OCR simulation fallback)`,
+    ocr_confidence: 30,
+    ocr_engine: 'Simulation Fallback'
+  };
+}
+
+// Vendor Invoice Upload - returns file hash & extracted invoice parameters
+app.post('/api/invoices/upload', authenticateToken, upload.single('invoice'), async (req, res, next) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded. Field name must be "invoice".' });
 
   const file = req.file;
-  logger.info({ filename: file.filename, size: file.size, mime: file.mimetype }, 'Invoice file uploaded');
+  logger.info({ filename: file.filename, size: file.size, mime: file.mimetype }, 'Invoice file uploaded for processing');
 
-  // Simulate AI/OCR extraction
-  const baseAmount = (file.size % 9000) + 1000;
-  const amount = Math.round(baseAmount / 10) * 10;
-  const purpose = `Vendor Invoice: ${file.originalname}`;
-
-  res.json({
-    success: true,
-    file_hash: file.filename,
-    extracted_amount: amount,
-    filename: file.originalname,
-    file_size: file.size,
-    purpose
-  });
+  try {
+    const ocrData = await processInvoiceOCR(file.path, file.originalname, file.mimetype);
+    res.json({
+      success: true,
+      file_hash: file.filename,
+      filename: file.originalname,
+      file_size: file.size,
+      ...ocrData
+    });
+  } catch (err) {
+    logger.error({ err: err.message }, 'Error in invoice OCR pipeline');
+    next(err);
+  }
 });
 
 // ══════════ WORKSHEETS ══════════
@@ -1082,7 +1507,12 @@ app.get('/api/worksheets', authenticateToken, (req, res, next) => {
 
 // Fallback to index.html for SPA routing
 app.use((req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
+  const frontendIndexPath = path.join(__dirname, 'frontend', 'build', 'index.html');
+  if (fs.existsSync(frontendIndexPath)) {
+    res.sendFile(frontendIndexPath);
+  } else {
+    res.sendFile(path.join(__dirname, 'index.html'));
+  }
 });
 
 // Register error handler

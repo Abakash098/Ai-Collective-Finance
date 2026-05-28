@@ -5,7 +5,7 @@ import {
   Stepper, Step, StepLabel, Alert, CircularProgress, Divider, Avatar, Tooltip
 } from '@mui/material';
 import {
-  CheckCircle, Cancel, Visibility, AttachMoney, Person, Schedule, VerifiedUser
+  CheckCircle, Cancel, Visibility, CurrencyRupee, Person, Schedule, VerifiedUser
 } from '@mui/icons-material';
 import { useApi } from '../hooks/useApi';
 
@@ -51,6 +51,10 @@ const VerifierDashboard = ({ verifierId, title, subtitle, icon, accentColor }) =
   const [comment, setComment] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
   const [actionResult, setActionResult] = useState(null);
+  
+  // Comments history state
+  const [comments, setComments] = useState([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
 
   const fetchRequests = async () => {
     setLoading(true);
@@ -66,12 +70,40 @@ const VerifierDashboard = ({ verifierId, title, subtitle, icon, accentColor }) =
 
   useEffect(() => { fetchRequests(); }, []); // eslint-disable-line
 
-  // PRIVACY: Only show requests where the vendor chose THIS verifier
-  const myRequests = allRequests.filter(r => r.verifier === verifierId);
+  // Fetch comments when selected request changes
+  useEffect(() => {
+    if (selected) {
+      const fetchComments = async () => {
+        setCommentsLoading(true);
+        try {
+          const res = await apiFetch(`/api/audit?reqId=${selected.id}`);
+          if (res.ok) {
+            const data = await res.json();
+            setComments(data.data || []);
+          }
+        } catch (e) {
+          console.error('Failed to fetch comments', e);
+        } finally {
+          setCommentsLoading(false);
+        }
+      };
+      fetchComments();
+    } else {
+      setComments([]);
+    }
+  }, [selected, apiFetch]);
+
+  // PRIVACY: Only show requests where the vendor chose THIS logged in verifier
+  const loggedInVerifierId = user?.name?.toLowerCase() || '';
+  const myRequests = allRequests.filter(r => r.verifier?.toLowerCase() === loggedInVerifierId);
   const pendingCount = myRequests.filter(r => r.status === 'PND').length;
 
   const doAction = async (nextState) => {
     if (!comment.trim()) { setActionResult({ type: 'error', msg: 'Please add a review comment.' }); return; }
+    if (selected?.verifier?.toLowerCase() !== loggedInVerifierId) {
+      setActionResult({ type: 'error', msg: 'Security error: You are not the assigned verifier.' });
+      return;
+    }
     setActionLoading(true);
     setActionResult(null);
     try {
@@ -83,6 +115,12 @@ const VerifierDashboard = ({ verifierId, title, subtitle, icon, accentColor }) =
       if (res.ok) {
         setActionResult({ type: 'success', msg: nextState === 'VRF' ? 'Verified ✅' : 'Rejected ❌' });
         setComment('');
+        // Re-fetch comments to show the new comment immediately
+        const cRes = await apiFetch(`/api/audit?reqId=${selected.id}`);
+        if (cRes.ok) {
+          const cData = await cRes.json();
+          setComments(cData.data || []);
+        }
         fetchRequests();
         setTimeout(() => { setSelected(null); setActionResult(null); }, 1500);
       } else {
@@ -214,7 +252,7 @@ const VerifierDashboard = ({ verifierId, title, subtitle, icon, accentColor }) =
 
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mb: 3 }}>
                 {[
-                  { label: 'Amount', value: `₹${selected.amount?.toLocaleString()}`, icon: <AttachMoney sx={{ fontSize: 16 }} />, color: 'success.light' },
+                  { label: 'Amount', value: `₹${selected.amount?.toLocaleString()}`, icon: <CurrencyRupee sx={{ fontSize: 16 }} />, color: 'success.light' },
                   { label: 'Purpose', value: selected.purpose },
                   { label: 'Requester', value: selected.requester, icon: <Person sx={{ fontSize: 16 }} /> },
                   { label: 'Submitted', value: new Date(selected.ts).toLocaleString('en-IN') },
@@ -229,15 +267,104 @@ const VerifierDashboard = ({ verifierId, title, subtitle, icon, accentColor }) =
               </Box>
 
               {/* Show attached invoice if available */}
-              {selected.file_hash && (
+              {selected.file_hash && (() => {
+                const isPdf = selected.file_hash.toLowerCase().endsWith('.pdf');
+                return (
+                  <Box sx={{ mb: 3 }}>
+                    <Typography variant="caption" color="text.secondary" mb={1} display="block">Attached Invoice</Typography>
+                    {isPdf ? (
+                      <Box sx={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 2, overflow: 'hidden' }}>
+                        <iframe
+                          src={`${API_BASE_URL}/uploads/${selected.file_hash}`}
+                          title="Invoice PDF"
+                          width="100%"
+                          height="350px"
+                          style={{ border: 'none', backgroundColor: '#fff' }}
+                        />
+                        <Box sx={{ p: 1, textAlign: 'center', borderTop: '1px solid rgba(255,255,255,0.1)', bgcolor: 'rgba(0,0,0,0.2)' }}>
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            component="a"
+                            href={`${API_BASE_URL}/uploads/${selected.file_hash}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            📂 Open PDF in New Tab
+                          </Button>
+                        </Box>
+                      </Box>
+                    ) : (
+                      <Box
+                        component="img"
+                        src={`${API_BASE_URL}/uploads/${selected.file_hash}`}
+                        alt="Invoice"
+                        sx={{ width: '100%', maxHeight: 250, objectFit: 'contain', borderRadius: 2, border: '1px solid rgba(255,255,255,0.1)', backgroundColor: 'rgba(0,0,0,0.2)' }}
+                      />
+                    )}
+                  </Box>
+                );
+              })()}
+
+              {/* Previous Comments Section */}
+              {comments.length > 0 && (
                 <Box sx={{ mb: 3 }}>
-                  <Typography variant="caption" color="text.secondary" mb={1} display="block">Attached Invoice</Typography>
-                  <Box
-                    component="img"
-                    src={`${API_BASE_URL}/uploads/${selected.file_hash}`}
-                    alt="Invoice"
-                    sx={{ width: '100%', maxHeight: 250, objectFit: 'contain', borderRadius: 2, border: '1px solid rgba(255,255,255,0.1)', backgroundColor: 'rgba(0,0,0,0.2)' }}
-                  />
+                  <Typography variant="subtitle2" color="primary" mb={1.5} sx={{ fontWeight: 700 }}>
+                    💬 Previous Comments & Reviews
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                    {comments.map((log) => {
+                      const dateStr = new Date(log.ts).toLocaleString('en-IN', {
+                        day: 'numeric', month: 'short', year: 'numeric',
+                        hour: '2-digit', minute: '2-digit'
+                      });
+                      const roleLabel = {
+                        DEV: '👨‍💻 Developer',
+                        EMP: '👤 Employee',
+                        VRF: '👁️ Verifier',
+                        FIN: '💼 Finance',
+                        OWN: '👑 Owner',
+                        ADM: '🛡️ Admin',
+                        VND: '🏪 Vendor',
+                      }[log.actor_role] || log.actor_role || 'System';
+
+                      return (
+                        <Paper 
+                          key={log.id} 
+                          sx={{ 
+                            p: 2, 
+                            borderRadius: 2, 
+                            border: '1px solid rgba(255,255,255,0.06)', 
+                            background: 'rgba(255,255,255,0.02)',
+                            position: 'relative'
+                          }}
+                        >
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Typography variant="body2" fontWeight={700}>
+                                {log.actor_name || log.actor}
+                              </Typography>
+                              <Chip label={roleLabel} size="small" sx={{ fontSize: 9, height: 16 }} />
+                            </Box>
+                            <Typography variant="caption" color="text.secondary">
+                              {dateStr}
+                            </Typography>
+                          </Box>
+                          <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', pl: 1, borderLeft: '2px solid rgba(99,102,241,0.4)' }}>
+                            "{log.comment || 'No comment provided'}"
+                          </Typography>
+                          <Box sx={{ mt: 1, display: 'flex', gap: 1 }}>
+                            <Chip label={`${log.prev || '-'} → ${log.next || '-'}`} size="small" variant="outlined" color="primary" sx={{ fontSize: 8, height: 14 }} />
+                          </Box>
+                        </Paper>
+                      );
+                    })}
+                  </Box>
+                </Box>
+              )}
+              {commentsLoading && (
+                <Box sx={{ py: 2, textAlign: 'center', mb: 2 }}>
+                  <CircularProgress size={20} />
                 </Box>
               )}
 

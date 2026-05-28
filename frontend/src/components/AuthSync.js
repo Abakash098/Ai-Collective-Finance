@@ -30,21 +30,24 @@ export default function AuthSync({ children }) {
             body: JSON.stringify({
               id: user.id,
               name: user.fullName || user.username || user.emailAddresses?.[0]?.emailAddress || 'User',
-              role: 'DEV'  // only used if user is brand new
+              email: user.emailAddresses?.[0]?.emailAddress || '',
+              role: 'DEV'  // only used if user is brand new AND email not in map
             })
           });
 
           let dbRole = 'DEV';
+          let dbName = user.fullName || user.username || user.emailAddresses?.[0]?.emailAddress || 'User';
           if (syncRes.ok) {
             const syncData = await syncRes.json();
-            // backend now returns the actual persisted role
+            // Backend returns the email-mapped role and name
             if (syncData.role) dbRole = syncData.role;
+            if (syncData.name) dbName = syncData.name;
           }
 
           // 2. Build the user object for Redux from Clerk + DB
           const meUser = {
             id: user.id,
-            name: user.fullName || user.username || user.emailAddresses?.[0]?.emailAddress || 'User',
+            name: dbName,
             role: dbRole,
             email: user.emailAddresses?.[0]?.emailAddress
           };
