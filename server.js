@@ -579,7 +579,8 @@ async function initDb() {
     port: parseInt(process.env.PGPORT || '5432'),
     user: process.env.PGUSER || 'postgres',
     password: process.env.PGPASSWORD || 'postgres',
-    database: process.env.PGDATABASE || 'finance'
+    database: process.env.PGDATABASE || 'finance',
+    ssl: process.env.PGHOST && process.env.PGHOST !== 'localhost' ? { rejectUnauthorized: false } : false
   };
 
   try {
