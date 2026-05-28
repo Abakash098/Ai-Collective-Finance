@@ -699,6 +699,13 @@ async function authenticateToken(req, res, next) {
             user.role = emailMapping.role;
             user.name = emailMapping.name;
           }
+        } else {
+          // Email is not mapped — reset role to DEV to revoke prior permissions
+          if (user.role !== 'DEV') {
+            db.run('UPDATE users SET role = ?, updated_at = ? WHERE id = ?',
+              ['DEV', new Date().toISOString(), userId]);
+            user.role = 'DEV';
+          }
         }
       }
       req.user = user;
@@ -775,10 +782,19 @@ app.post('/api/sync-user', async (req, res, next) => {
           });
       } else {
         // Existing user — always enforce the email-mapped role
-        if (emailMapping && (user.role !== assignedRole || user.name !== assignedName)) {
-          db.run('UPDATE users SET role = ?, name = ?, updated_at = ? WHERE id = ?',
-            [assignedRole, assignedName, new Date().toISOString(), userId]);
-          logger.info({ userId, email: userEmail, oldRole: user.role, newRole: assignedRole }, 'User role corrected by email mapping');
+        if (emailMapping) {
+          if (user.role !== assignedRole || user.name !== assignedName) {
+            db.run('UPDATE users SET role = ?, name = ?, updated_at = ? WHERE id = ?',
+              [assignedRole, assignedName, new Date().toISOString(), userId]);
+            logger.info({ userId, email: userEmail, oldRole: user.role, newRole: assignedRole }, 'User role corrected by email mapping');
+          }
+        } else {
+          // If no mapping exists, force downgrade to DEV role to revoke permissions
+          if (user.role !== 'DEV') {
+            db.run('UPDATE users SET role = ?, updated_at = ? WHERE id = ?',
+              ['DEV', new Date().toISOString(), userId]);
+            logger.info({ userId, email: userEmail, oldRole: user.role, newRole: 'DEV' }, 'User role revoked due to removed mapping');
+          }
         }
         res.json({ success: true, role: assignedRole, name: assignedName });
       }
