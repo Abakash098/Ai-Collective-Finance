@@ -39,9 +39,9 @@ const VendorPortal = () => {
 
   const handleFile = async (file) => {
     if (!file) return;
-    const allowed = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'];
+    const allowed = ['image/jpeg', 'image/png', 'image/jpg'];
     if (!allowed.includes(file.type)) {
-      setError('Only PDF, JPG, PNG files are allowed.');
+      setError('Only JPG, PNG files are allowed.');
       return;
     }
     setError(null);
@@ -145,14 +145,14 @@ const VendorPortal = () => {
             }}
             onClick={() => !uploading && fileInputRef.current?.click()}
           >
-            <input ref={fileInputRef} type="file" hidden onChange={onFileChange} accept=".pdf,.jpg,.jpeg,.png" />
+            <input ref={fileInputRef} type="file" hidden onChange={onFileChange} accept=".jpg,.jpeg,.png" />
             <CloudUpload sx={{ fontSize: 56, color: dragOver ? '#6366f1' : 'text.disabled', mb: 2, transition: 'color 0.2s' }} />
             <Typography variant="h6" mb={1}>
               {uploading ? 'Processing Invoice...' : 'Upload Invoice'}
             </Typography>
             <Typography variant="body2" color="text.secondary" mb={3}>
               Drag & drop or click to select<br />
-              <strong>PDF, JPG, PNG</strong> supported
+              <strong>JPG, PNG</strong> supported
             </Typography>
 
             {uploading && (

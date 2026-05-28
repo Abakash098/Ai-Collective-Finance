@@ -336,8 +336,8 @@ const SubmitRequest = () => {
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1.5 }}>
               {!fileHash ? (
                 <Button variant="outlined" component="label" sx={{ mr: 2, background: 'linear-gradient(135deg, rgba(99,102,241,0.08), rgba(139,92,246,0.08))', borderColor: 'primary.main' }} disabled={ocrScanning}>
-                  📁 Upload Image/PDF
-                  <input type="file" hidden accept="image/*,application/pdf,.webp,.heic,.heif" onChange={handleFileUpload} />
+                  📁 Upload Image
+                  <input type="file" hidden accept="image/*,.webp,.heic,.heif" onChange={handleFileUpload} />
                 </Button>
               ) : (
                 <Button variant="outlined" color="error" onClick={() => { setFileHash(''); setUploadMessage(''); setBaseAmount(''); setOcrData(null); setOcrApplied(false); setVerifications({}); }} disabled={ocrScanning}>
