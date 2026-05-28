@@ -574,14 +574,19 @@ function initSQLite() {
 }
 
 async function initDb() {
-  const pgConfig = {
-    host: process.env.PGHOST || 'localhost',
-    port: parseInt(process.env.PGPORT || '5432'),
-    user: process.env.PGUSER || 'postgres',
-    password: process.env.PGPASSWORD || 'postgres',
-    database: process.env.PGDATABASE || 'finance',
-    ssl: process.env.PGHOST && process.env.PGHOST !== 'localhost' && process.env.PGHOST.includes('.') ? { rejectUnauthorized: false } : false
-  };
+  const pgConfig = process.env.DATABASE_URL 
+    ? { 
+        connectionString: process.env.DATABASE_URL,
+        ssl: process.env.DATABASE_URL.includes('.render.com') ? { rejectUnauthorized: false } : false
+      }
+    : {
+        host: process.env.PGHOST || 'localhost',
+        port: parseInt(process.env.PGPORT || '5432'),
+        user: process.env.PGUSER || 'postgres',
+        password: process.env.PGPASSWORD || 'postgres',
+        database: process.env.PGDATABASE || 'finance',
+        ssl: process.env.PGHOST && process.env.PGHOST !== 'localhost' && process.env.PGHOST.includes('.') ? { rejectUnauthorized: false } : false
+      };
 
   try {
     await initPostgres(pgConfig);
